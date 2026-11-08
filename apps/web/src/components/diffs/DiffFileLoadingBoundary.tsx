@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { observeIntersection } from "~/lib/observeIntersection";
-import { DiffFileHeaderSkeleton } from "../DiffPanelShell";
 
 export function DiffFileLoadingBoundary({ load, count }: { load: () => void; count: number }) {
   const [isNear, setIsNear] = useState(false);
@@ -22,13 +21,6 @@ export function DiffFileLoadingBoundary({ load, count }: { load: () => void; cou
     if (isNear && count > 0) loadLatest();
   }, [isNear, count, loadLatest]);
 
-  return (
-    <div ref={observe} role="status" aria-label="Loading diff…">
-      {Array.from({ length: Math.min(count, 4) }, (_, index) => (
-        <div key={index} aria-hidden className="border-b border-border/40">
-          <DiffFileHeaderSkeleton titleWidth="medium" />
-        </div>
-      ))}
-    </div>
-  );
+  // Every remaining file already has a placeholder row above, so this only marks the list's end.
+  return <div ref={observe} aria-hidden />;
 }
