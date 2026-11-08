@@ -8,38 +8,44 @@ function Probe(props: {
   readonly viewKey: string;
   readonly enabled?: boolean;
   readonly intervalMs?: number | null;
-  readonly refreshOnShow?: boolean;
+  readonly staleOnlyAfterLeaving?: boolean;
 }) {
   useLiveRefresh(props.refresh, {
     key: props.viewKey,
     enabled: props.enabled ?? true,
     ...(props.intervalMs !== undefined ? { intervalMs: props.intervalMs } : {}),
-    ...(props.refreshOnShow !== undefined ? { refreshOnShow: props.refreshOnShow } : {}),
+    ...(props.staleOnlyAfterLeaving !== undefined
+      ? { staleOnlyAfterLeaving: props.staleOnlyAfterLeaving }
+      : {}),
   });
   return null;
 }
 
 describe("useLiveRefresh", () => {
-  it("with refreshOnShow, reads on every show unless it read within the floor", async () => {
+  it("with staleOnlyAfterLeaving, reads on show only once the window was left", async () => {
     const refresh = vi.fn();
-    // The first enable reads the clock.
-    using _timers = fakeTimers({ now: 1_000_000 });
+    // Year 2100: window switches before this test happened in real time, so they predate its reads.
+    using _timers = fakeTimers({ now: 4_102_444_800_000 });
     const probe = (enabled: boolean) => (
-      <Probe refresh={refresh} viewKey="show" enabled={enabled} refreshOnShow intervalMs={null} />
+      <Probe
+        refresh={refresh}
+        viewKey="leaving"
+        enabled={enabled}
+        staleOnlyAfterLeaving
+        intervalMs={null}
+      />
     );
     // A bare hook probe; nothing here navigates.
     await using screen = await render(probe(true), { router: false });
-    expect(refresh).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTime(LIVE_REFRESH_MIN_INTERVAL_MS));
+    await screen.rerender(probe(false));
+    await screen.rerender(probe(true));
+    expect(refresh).not.toHaveBeenCalled();
 
     await screen.rerender(probe(false));
-    await act(() => vi.advanceTimersByTime(LIVE_REFRESH_MIN_INTERVAL_MS - 1));
+    await act(() => window.dispatchEvent(new Event("blur")));
     await screen.rerender(probe(true));
     expect(refresh).toHaveBeenCalledTimes(1);
-
-    await screen.rerender(probe(false));
-    await act(() => vi.advanceTimersByTime(1));
-    await screen.rerender(probe(true));
-    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it("with intervalMs null, never refreshes on a timer", async () => {

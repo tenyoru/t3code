@@ -385,8 +385,8 @@ export default function DiffPanel({
       : undefined;
   const canRefreshGitDiff =
     isGitRepo && isGitSelection && activeThread != null && activeCwd != null;
-  // Read under the workspace mutation id, so each mutation refetches the diff; the panel stays
-  // mounted while hidden, so a mutation made then is already reflected when it shows.
+  // Read under the workspace mutation id, so each mutation refetches the diff, including one made
+  // while the panel was closed.
   const branchDiffPreview = useEnvironmentQuery(
     branchDiffPreviewInput && activeThread
       ? revisionedQuery(
@@ -615,10 +615,10 @@ export default function DiffPanel({
   const refreshBranchDiffPreview = refreshPreviewQuery;
   const diffRefreshKey = `diff:${activeThreadRefreshKey ?? ""}`;
 
-  // The panel stays mounted while hidden, and edits made outside T3 Code bump no mutation id, so
-  // showing it revalidates the diff; that also stands in for focus events missed while hidden.
-  // A git diff is too costly to repeat on a timer nobody asked for. A diff read within the floor,
-  // such as a mutation's refetch while hidden, already counts as that revalidation.
+  // Edits made outside T3 Code bump no mutation id, so the diff revalidates when the user returns
+  // to the window, or opens the panel after leaving the window since its last read. A git diff is
+  // too costly to repeat on a timer or on every reopen. A diff read within the floor, such as a
+  // mutation's refetch, already counts as that revalidation.
   useLiveRefresh(
     branchDiffPreview.data !== null && !branchDiffPreview.isPending
       ? () => {
@@ -630,7 +630,7 @@ export default function DiffPanel({
       enabled: visible && canReadFiles && canRefreshGitDiff,
       key: diffRefreshKey,
       intervalMs: null,
-      refreshOnShow: true,
+      staleOnlyAfterLeaving: true,
     },
   );
 

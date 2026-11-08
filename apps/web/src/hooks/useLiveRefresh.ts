@@ -43,6 +43,18 @@ function shouldRefreshOnInterval(input: {
 // Survive remounts so returning to a view does not make fresh reads look overdue.
 const lastRefreshedAtByView = new Map<string, number>();
 
+// Kept even with no view mounted: another app can edit what a view shows only while this window
+// is left, and a view shown later must know whether that happened since its last read.
+let windowSwitchedAt = 0;
+if (typeof window !== "undefined") {
+  const noteWindowSwitch = () => {
+    windowSwitchedAt = Date.now();
+  };
+  window.addEventListener("blur", noteWindowSwitch);
+  window.addEventListener("focus", noteWindowSwitch);
+  document.addEventListener("visibilitychange", noteWindowSwitch);
+}
+
 let lastInteractedAt = 0;
 const interactionWatchers = new Set<() => void>();
 const INTERACTION_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
@@ -78,18 +90,17 @@ export function useLiveRefresh(
     /** `null` turns off the periodic refresh, for a read too costly to repeat unasked. */
     readonly intervalMs?: number | null;
     /**
-     * Refresh every time the view is enabled unless it read within the floor, skipping the
-     * first-read rule: for a view that stays mounted while hidden, so its mount-time read can be
-     * long stale when shown.
+     * For data only another app changes behind the view's back, since the app's own changes
+     * refetch it: showing the view again reads only when the window was left since its last read.
      */
-    readonly refreshOnShow?: boolean;
+    readonly staleOnlyAfterLeaving?: boolean;
   } = {},
 ): void {
   const {
     enabled = true,
     key,
     intervalMs = LIVE_REFRESH_INTERVAL_MS,
-    refreshOnShow = false,
+    staleOnlyAfterLeaving = false,
   } = options;
   const runRefresh = useEffectEvent((viewId: string, now: number) => {
     if (refresh === null) return;
@@ -136,13 +147,9 @@ export function useLiveRefresh(
       onArrival();
       syncTimer();
     });
-    if (refreshOnShow) {
-      const now = Date.now();
-      const lastRefreshedAt = lastRefreshedAtByView.get(viewId);
-      if (lastRefreshedAt === undefined || now - lastRefreshedAt >= LIVE_REFRESH_MIN_INTERVAL_MS) {
-        read(now);
-      }
-    } else onArrival();
+    const lastRefreshedAt = lastRefreshedAtByView.get(viewId);
+    const readSinceLeaving = lastRefreshedAt !== undefined && lastRefreshedAt > windowSwitchedAt;
+    if (!staleOnlyAfterLeaving || !readSinceLeaving) onArrival();
     syncTimer();
     window.addEventListener("focus", onArrival);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -152,5 +159,5 @@ export function useLiveRefresh(
       document.removeEventListener("visibilitychange", onVisibilityChange);
       stopWatchingInteraction();
     };
-  }, [enabled, viewId, intervalMs, refreshOnShow]);
+  }, [enabled, viewId, intervalMs, staleOnlyAfterLeaving]);
 }
